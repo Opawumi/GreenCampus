@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { Html5Qrcode } from 'html5-qrcode';
 import './RecycleBinPage.css';
 
 const RecycleBinPage = () => {
@@ -22,6 +23,8 @@ const RecycleBinPage = () => {
     address: ''
   });
   const [submitStatus, setSubmitStatus] = useState('');
+  const [showScanner, setShowScanner] = useState(false);
+  const scannerRef = useRef(null);
 
   // Handle form change
   const handleChange = e => {
@@ -34,15 +37,15 @@ const RecycleBinPage = () => {
   };
 
   // Handle form submit
-  const handleSubmit = async e => {
-    e.preventDefault();
+  const handleSubmit = async (e, scannedAddress) => {
+    if (e) e.preventDefault();
     const formData = new FormData();
     formData.append('userId', userId);
     formData.append('image', form.image);
     formData.append('date', form.date);
     formData.append('time', form.time);
     formData.append('quantity', form.quantity);
-    formData.append('address', form.address);
+    formData.append('address', scannedAddress || form.address);
     try {
       const res = await fetch('http://localhost:5000/api/recycles', {
         method: 'POST',
@@ -57,6 +60,32 @@ const RecycleBinPage = () => {
     } catch {
       setSubmitStatus('Submission error.');
     }
+    setShowScanner(false);
+  };
+
+  // Start QR scanner
+  const startScanner = () => {
+    setShowScanner(true);
+    setTimeout(() => {
+      if (scannerRef.current) {
+        const html5QrCode = new Html5Qrcode(scannerRef.current.id);
+        html5QrCode.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: 250 },
+          async qrCodeMessage => {
+            setForm(prev => ({ ...prev, address: qrCodeMessage }));
+            await handleSubmit(null, qrCodeMessage);
+            html5QrCode.stop();
+          },
+          errorMessage => {
+            // Ignore scan errors
+          }
+        ).catch(err => {
+          setSubmitStatus('QR Scan error');
+          setShowScanner(false);
+        });
+      }
+    }, 300);
   };
 
   return (
@@ -83,8 +112,16 @@ const RecycleBinPage = () => {
             <input type="text" name="time" placeholder="Time" value={form.time} onChange={handleChange} required />
             <input type="number" name="quantity" placeholder="Quantity" value={form.quantity} onChange={handleChange} required />
             <input type="text" name="address" placeholder="Insert address of the bin location..." value={form.address} onChange={handleChange} required />
-            <button type="submit" className="qr-scan" style={{ background: 'linear-gradient(90deg, #009e2a 0%, #00e676 100%)', fontWeight: 'bold', fontSize: '1.1rem' }}>Submit<br /><span style={{ fontWeight: 'normal', fontSize: '0.95rem' }}>your recycle item</span></button>
+            <button type="button" className="qr-scan" style={{ background: 'linear-gradient(90deg, #009e2a 0%, #00e676 100%)', fontWeight: 'bold', fontSize: '1.1rem' }} onClick={startScanner}>
+              Scan QR code<br /><span style={{ fontWeight: 'normal', fontSize: '0.95rem' }}>on the bin to submit</span>
+            </button>
           </form>
+          {showScanner && (
+            <div style={{ margin: '1rem 0' }}>
+              <div id="qr-scanner" ref={scannerRef} style={{ width: '100%', height: '300px', background: '#eee' }} />
+              <button onClick={() => setShowScanner(false)}>Cancel</button>
+            </div>
+          )}
           {submitStatus && <div style={{ color: '#2e7d32', fontWeight: 'bold', marginTop: '0.5rem' }}>{submitStatus}</div>}
           <div style={{ borderTop: '2px solid #2e7d32', margin: '1.2rem 0 0.7rem 0' }} />
           <div className="recycle-history">
